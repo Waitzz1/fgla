@@ -9,6 +9,44 @@ from optim_attack import dlg_algorithm, stg_algorithm, ig_algorithm
 from gen_attack import gen_attack_algorithm, Generator
 from torchmetrics.functional import peak_signal_noise_ratio, structural_similarity_index_measure
 from torchmetrics.image.lpip import LearnedPerceptualImagePatchSimilarity
+import torch.nn as nn
+import torchvision
+
+import random
+
+
+random.seed(1234)
+
+def disable_inplace_relu(model: nn.Module):
+    for module in model.modules():
+        if isinstance(module, nn.ReLU):
+            module.inplace = False
+
+def patch_resnet_bottleneck_add(model):
+    for module in model.modules():
+        if isinstance(module, torchvision.models.resnet.Bottleneck):
+            orig_forward = module.forward
+
+            def new_forward(self, x):
+                identity = self.downsample(x) if self.downsample is not None else x
+                out = self.conv1(x)
+                out = self.bn1(out)
+                out = self.relu(out)
+
+                out = self.conv2(out)
+                out = self.bn2(out)
+                out = self.relu(out)
+
+                out = self.conv3(out)
+                out = self.bn3(out)
+
+                # inplace 替换为 out = out + identity
+                out = out + identity
+                out = self.relu(out)
+                return out
+
+            # 绑定新 forward
+            module.forward = new_forward.__get__(module, module.__class__)
 
 
 def parse_args():
@@ -42,11 +80,14 @@ if __name__ == "__main__":
 
     make_dir_if_not_exist(record_dir)
     setup_seed(args.seed)
+    seeds = [random.randint(0, 1000000) for _ in range(args.reconstruct_num)]
     get_lpips = LearnedPerceptualImagePatchSimilarity(net_type="vgg")
 
     resnet50 = Resnet50(pool=False).to(args.device)
+    disable_inplace_relu(resnet50)
+    patch_resnet_bottleneck_add(resnet50)
     dataloader = get_dataloader(args.dataset, batch_size=args.batch_size, shuffle=True, train=False)
-    grad_dl = get_grad_dl(resnet50, dataloader, device=args.device)
+    grad_dl = get_grad_dl(resnet50, dataloader, device=args.device,seeds=seeds)
 
     index = 0
     for x, y, grad, mean_var_list in grad_dl:
@@ -61,7 +102,8 @@ if __name__ == "__main__":
         elif args.algorithm == "stg":
             dummy_x = stg_algorithm(grad, y, mean_var_list, resnet50, (args.batch_size, 3, 224, 224),
                                     args.max_iteration,
-                                    args.device)
+                                    args.device,
+                                    seed=seeds[index])
         elif args.algorithm == "ig":
             dummy_x = ig_algorithm(grad, y, resnet50, (args.batch_size, 3, 224, 224), args.max_iteration,
                                    args.device, record_dir)

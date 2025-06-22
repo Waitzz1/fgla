@@ -27,10 +27,10 @@ class RandomGradientEstimator(AbstractGradientEstimator):
     ):
         
         self.parameters_list: list[Parameter] = [p for p in parameters if p.requires_grad]
-        for i, p in enumerate(self.parameters_list):
-            print(f"[{i}] shape: {p.shape}, id: {id(p)}")
+        #for i, p in enumerate(self.parameters_list):
+            #print(f"[{i}] shape: {p.shape}, id: {id(p)}")
         self.total_dimensions = sum([p.numel() for p in self.parameters_list])
-        print(f"trainable model size: {self.total_dimensions}")
+        #print(f"trainable model size: {self.total_dimensions}")
 
         self.mu = mu
         self.num_pert = num_pert

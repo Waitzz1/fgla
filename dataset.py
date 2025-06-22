@@ -35,7 +35,7 @@ def get_dataloader(name, batch_size, shuffle=False, train=False):
     return DataLoader(dataset, batch_size, drop_last=True, shuffle=shuffle)
 
 
-def get_grad_dl(model: nn.Module, dataloader: DataLoader, device):
+def get_grad_dl(model: nn.Module, dataloader: DataLoader, device,seeds: list[int]):
     model = copy.deepcopy(model).to(device)
     
     #print(model)
@@ -58,7 +58,8 @@ def get_grad_dl(model: nn.Module, dataloader: DataLoader, device):
     )
 
     hook = BNStatisticsHook(model, train=False)
-    for seed,(x, y) in enumerate(dataloader):
+    for i,(x, y) in enumerate(dataloader):
+        seed=seeds[i]
         model.zero_grad()
         hook.clear()
         x, y = x.to(device), y.to(device)
@@ -66,8 +67,8 @@ def get_grad_dl(model: nn.Module, dataloader: DataLoader, device):
             y_pred = model(x_input)
             return criterion(y_pred, y_input)
         # y = torch.arange(len(x)).to(device)
-        _ = zo_estimator.compute_grad(x, y, loss_fn, seed=seed)
-        grad = [p.grad.detach().clone() if p.grad is not None else torch.zeros_like(p) for p in model.parameters() if p.requires_grad]
+        grad = zo_estimator.compute_grad(x, y, loss_fn, seed=seed)
+        #grad = [p.grad.detach().clone() if p.grad is not None else torch.zeros_like(p) for p in model.parameters() if p.requires_grad]
 
         mean_var_list = hook.mean_var_list
         yield x, y, grad, mean_var_list
